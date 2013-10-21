@@ -72,6 +72,7 @@ func main() {
 
 	go sigHandler()
 	go runSSH()
+	go runSSH2()
 	if config.EstimateTimeout {
 		go runEstimateTimeout()
 	} else {

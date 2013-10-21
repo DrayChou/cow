@@ -1,0 +1,143 @@
+# 代理服务器监听地址，用逗号分隔多个地址，或者重复多次来指定多个地址
+# 0.0.0.0 表示监听本机所有 IP 地址
+# PAC url 为 http://<listen>/pac，其中的代理服务器地址会根据 client 访问 ip 正确生成
+# 如果使用端口映射来将 COW 的服务提供到外网，请参考高级选项中的 addrInPAC 选项
+listen = 127.0.0.1:7777
+
+# 日志文件路径，如不指定则输出到 stdout
+#logFile =
+
+# COW 默认仅对被墙网站使用二级代理
+# 下面选项设置为 true 后，所有网站都通过二级代理访问
+#alwaysProxy = false
+
+# 指定多个二级代理时使用的负载均衡策略，可选策略如下
+#
+#   backup: 默认策略，优先使用第一个指定的二级代理，其他仅作备份使用
+#   hash:   根据请求的 host name，优先使用 hash 到的某一个二级代理
+#
+# 一个二级代理连接失败后会依次尝试其他二级代理
+# 失败的二级代理会以一定的概率再次尝试使用，因此恢复后会重新启用
+#loadBalance = backup
+
+#############################
+# SOCKS5 代理
+#############################
+
+# SOCKS5 代理地址，可重复指定多个
+#socksParent = 127.0.0.1:1080
+
+proxy = socks5://127.0.0.1:7070
+#socksParent = 127.0.0.1:7070
+proxy = socks5://127.0.0.1:7071
+#socksParent = 127.0.0.1:7071
+proxy = socks5://127.0.0.1:7072
+#socksParent = 127.0.0.1:7072
+proxy = socks5://127.0.0.1:1080
+#socksParent = 127.0.0.1:1080
+
+# 下面的选项可以让 COW 执行 ssh 命令创建本地 socks 代理，并在 ssh 断开后重连
+# COW 会自动使用通过 ssh 命令创建的 socks 代理，请不要针对该代理再次指定 socksParent
+# 可重复指定多个
+#
+# 注意这一功能必须使用 ssh public key authentication
+#
+# 若指定该选项，COW 将执行以下命令：
+#     ssh -n -N -D <local_socks_port> -p <server_ssh_port> <user@server>
+# server_ssh_port 端口不指定则默认为 22
+# 如果要指定其他 ssh 选项，请修改 ~/.ssh/config
+#sshServer = user@server:local_socks_port[:server_ssh_port]
+
+
+#plink.exe [-ssh] [-C] [-N] [-P 端口] -D [代理IP:]端口 [user@]host [-pw 密码]
+#plink.exe [-ssh] [-C] [-N] [-P 端口] -D [代理IP:]端口 [user@]host [-i key]
+#-ssh 表示使用SSH连接类型。plink与putty一样支持多种连接类型(raw,serial,telent等)，默认为SSH连接。
+#-C 表示启用压缩
+#-N 不执行Shell（我们的账户也不提供shell登陆）
+#-P 为服务器连接端口，默认为SSH:22 （因此也可以不写哦）
+#-D 连接建立后监听的IP和端口，也就是要在浏览器中设置代理时需要用到的IP和端口
+#-pw 密码，运行程序时可以忽略此参数，连上服务器后程序会提示输入密码。（这一项不用，我们使用密钥验证）
+#host ssh连接的服务器地址，可以是ip，也可以是域名。
+#sshServer2 = user@server:pw:local_socks_port[:server_ssh_port]
+sshServer2 = zhouwei@202.181.174.34:zzzwww9you123:7070:24213
+sshServer2 = we@laox.tk:zhou:7071:233
+sshServer2 = we@zh-w.net:zhou:7071:233
+
+
+#############################
+# shadowsocks 代理
+#############################
+
+# 若有自己的 VPS，推荐使用 shadowsocks，服务器端部署完成后本机无需另外开 socks 代理
+# 按顺序重复下面的配置来指定多个 shadowsocks server
+
+# shadowsocks 服务器地址，一定要指定端口
+#shadowSocks = 1.1.1.1:8388
+# shadowsocks 密码
+#shadowPasswd = barfoo!
+# shadowsocks 加密方法，不指定则使用默认加密方法，可选方法如下
+#   aes-128-cfb, aes-192-cfb, aes-256-cfb, bf-cfb, cast5-cfb, des-cfb, rc4
+#shadowMethod = rc4
+
+#############################
+# HTTP 代理
+#############################
+
+# 类似 shadowsocks，按顺序重复来指定多个二级 HTTP 代理
+
+# 可使用 goagent 等 HTTP 代理作为二级代理翻墙
+#httpParent = 127.0.0.1:8087
+# 支持二级 HTTP 代理的 Basic 认证
+#httpUserPasswd = username:password
+
+proxy = socks5://127.0.0.1:7070
+#httpParent = 127.0.0.1:8087
+
+#############################
+# 认证
+#############################
+
+# 指定允许的 IP 或者网段。网段仅支持 IPv4，可以指定 IPv6 地址，用逗号分隔多个项
+# 使用此选项时别忘了添加 127.0.0.1，否则本机访问也需要认证
+#allowedClient = 127.0.0.1, 192.168.1.0/24, 10.0.0.0/8
+
+# 要求客户端通过用户名密码认证
+# COW 总是先验证 IP 是否在 allowedClient 中，若不在其中再通过用户名密码认证
+#userPasswd = username:password
+
+# 如需指定多个用户名密码，可在下面选项指定的文件中列出，文件中每行内容如下
+#   username:password[:port]
+# port 为可选项，若指定，则该用户只能从指定端口连接 COW
+# 注意：如有重复用户，COW 会报错退出
+#userPasswdFile = /path/to/file
+
+# 认证失效时间
+# 语法：2h3m4s 表示 2 小时 3 分钟 4 秒
+#authTimeout = 2h
+
+#############################
+# 高级选项
+#############################
+
+# 最多允许使用多少个 CPU 核
+#core = 2
+
+# GFW 会使 DNS 解析超时，也可能返回错误的地址，能连接但是读不到任何内容
+# 下面两个值改小一点可以加速检测网站是否被墙，但网络情况差时可能误判
+
+# 创建连接超时（语法跟 authTimeout 相同）
+#dialTimeout = 5s
+# 从服务器读超时
+#readTimeout = 5s
+
+# 基于 client 是否很快关闭连接来检测 SSL 错误，只对 Chrome 有效
+# （Chrome 遇到 SSL 错误会直接关闭连接，而不是让用户选择是否继续）
+# 可能将可直连网站误判为被墙网站，当 GFW 进行 SSL 中间人攻击时可以考虑使用
+#detectSSLErr = false
+
+# 如果使用端口映射，可用下列选项指定对应 listen ip 地址提供的 PAC 中代理服务器的地址
+# 此选项中地址数量需跟 listen 中地址数量一致，可用空字符串表示与 listen ip 一致
+# 例如，下面例子中，访问 192.168.1.1:9999 得到的 PAC 中的代理地址为 2.2.2.2:3456
+#     listen = 192.168.1.1:8888, 192.168.1.1:9999
+#     addrInPAC = , 2.2.2.2:3456
+#addrInPAC = 127.0.0.1:7777
