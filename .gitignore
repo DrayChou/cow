@@ -3,3 +3,4 @@ cow-proxy
 rc.txt
 *.exe
 *.exe.*
+/*.exe
