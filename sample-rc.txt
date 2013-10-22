@@ -39,6 +39,10 @@ listen = 127.0.0.1:7777
 # 如果要指定其他 ssh 选项，请修改 ~/.ssh/config
 #sshServer = user@server:local_socks_port[:server_ssh_port]
 
+# plink 代理参数
+#sshServer2 = user@server:password:local_socks_port[:server_ssh_port]
+
+
 #############################
 # shadowsocks 代理
 #############################
