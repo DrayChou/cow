@@ -27,15 +27,6 @@ listen = 127.0.0.1:7777
 # SOCKS5 代理地址，可重复指定多个
 #socksParent = 127.0.0.1:1080
 
-proxy = socks5://127.0.0.1:7070
-#socksParent = 127.0.0.1:7070
-proxy = socks5://127.0.0.1:7071
-#socksParent = 127.0.0.1:7071
-proxy = socks5://127.0.0.1:7072
-#socksParent = 127.0.0.1:7072
-proxy = socks5://127.0.0.1:1080
-#socksParent = 127.0.0.1:1080
-
 # 下面的选项可以让 COW 执行 ssh 命令创建本地 socks 代理，并在 ssh 断开后重连
 # COW 会自动使用通过 ssh 命令创建的 socks 代理，请不要针对该代理再次指定 socksParent
 # 可重复指定多个
@@ -47,22 +38,13 @@ proxy = socks5://127.0.0.1:1080
 # server_ssh_port 端口不指定则默认为 22
 # 如果要指定其他 ssh 选项，请修改 ~/.ssh/config
 #sshServer = user@server:local_socks_port[:server_ssh_port]
+sshServer = user@server:local_socks_port
+sshServer = we@laox.tk:7071:233
 
-
-#plink.exe [-ssh] [-C] [-N] [-P 端口] -D [代理IP:]端口 [user@]host [-pw 密码]
-#plink.exe [-ssh] [-C] [-N] [-P 端口] -D [代理IP:]端口 [user@]host [-i key]
-#-ssh 表示使用SSH连接类型。plink与putty一样支持多种连接类型(raw,serial,telent等)，默认为SSH连接。
-#-C 表示启用压缩
-#-N 不执行Shell（我们的账户也不提供shell登陆）
-#-P 为服务器连接端口，默认为SSH:22 （因此也可以不写哦）
-#-D 连接建立后监听的IP和端口，也就是要在浏览器中设置代理时需要用到的IP和端口
-#-pw 密码，运行程序时可以忽略此参数，连上服务器后程序会提示输入密码。（这一项不用，我们使用密钥验证）
-#host ssh连接的服务器地址，可以是ip，也可以是域名。
-#sshServer2 = user@server:pw:local_socks_port[:server_ssh_port]
-sshServer2 = zhouwei@202.181.174.34:zzzwww9you123:7070:24213
+# plink 代理参数
+#sshServer2 = user@server:password:local_socks_port[:server_ssh_port]
+sshServer2 = user@server:password:local_socks_port
 sshServer2 = we@laox.tk:zhou:7071:233
-sshServer2 = we@zh-w.net:zhou:7071:233
-
 
 #############################
 # shadowsocks 代理
@@ -89,9 +71,6 @@ sshServer2 = we@zh-w.net:zhou:7071:233
 #httpParent = 127.0.0.1:8087
 # 支持二级 HTTP 代理的 Basic 认证
 #httpUserPasswd = username:password
-
-proxy = socks5://127.0.0.1:7070
-#httpParent = 127.0.0.1:8087
 
 #############################
 # 认证
@@ -121,6 +100,12 @@ proxy = socks5://127.0.0.1:7070
 
 # 最多允许使用多少个 CPU 核
 #core = 2
+
+# 允许建立隧道连接的端口，多个端口用逗号分隔，可重复多次
+# 默认允许下列服务的端口: ssh, http, https, rsync, imap, pop, jabber, cvs, git
+# 如需允许其他端口，请用该选项添加
+# 限制隧道连接的端口可以防止将运行 COW 的服务器上只监听本机 ip 的服务暴露给外部
+#tunnelAllowedPort = 80, 443
 
 # GFW 会使 DNS 解析超时，也可能返回错误的地址，能连接但是读不到任何内容
 # 下面两个值改小一点可以加速检测网站是否被墙，但网络情况差时可能误判

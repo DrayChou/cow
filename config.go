@@ -334,7 +334,7 @@ func (p configParser) ParseSshServer2(val string) {
 			val += "22"
 		}
 	} else {
-		Fatal("sshServer should be in the form of: user@server:local_socks_port[:server_ssh_port]")
+		Fatal("SshServer2 should be in the form of: user@server:password:local_socks_port[:server_ssh_port]")
 	}
 	// add created socks server
 	p.ParseSocksParent("127.0.0.1:" + arr[2])
