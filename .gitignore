@@ -1,7 +1,8 @@
 *.sublime*
 cow-proxy
-rc.txt*
-/*.exe
 desktop.ini
 .putty
+
+/rc.txt*
+/*.exe
 /*.EXE
