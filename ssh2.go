@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"os/exec"
 	"strings"
@@ -36,11 +37,15 @@ func runOneSSH2(server string) {
 		// -n redirects stdin from /dev/null
 		// -N do not execute remote command
 		debug.Println("connecting to ssh server", sshServer+":"+sshPort)
+		fmt.Println("connecting to ssh server", sshServer+":"+sshPort)
 		cmd := exec.Command("plink", "-C", "-N", "-D", localPort, "-pw", passwd, "-P", sshPort, sshServer)
+		fmt.Println("plink", "-C", "-N", "-D", localPort, "-pw", passwd, "-P", sshPort, sshServer)
+		fmt.Println(cmd.Path)
 		if err := cmd.Run(); err != nil {
 			debug.Println("plink:", err)
 		}
 		debug.Println("plink", sshServer+":"+sshPort, "exited, reconnect")
+		fmt.Println("plink", sshServer+":"+sshPort, "exited, reconnect")
 		time.Sleep(5 * time.Second)
 		alreadyRunPrinted = false
 	}
