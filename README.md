@@ -7,6 +7,12 @@ COW 是一个利用二级代理自动化穿越防火墙的 HTTP 代理服务器�
 
 **欢迎在 develop branch 进行开发并发送 pull request :)**
 
+## 本修改版修改记录
+
+- 添加 plink 的代理支持，调用格式如下：
+  - sshServer2 = user@server:password:local_socks_port[:server_ssh_port]
+- 附：从网上找到忽略授权的 plink ， [点击查看](http://www.fqyy.org/sunu/archives/181.html#comment-10674)
+
 ## 功能
 
 COW 的设计目标是自动化，理想情况下用户无需关心哪些网站被封锁，可直连网站也不会因为使用二级代理而降低访问速度。作为 HTTP 代理，可以提供给移动设备使用；若部署在国内服务器上，可作为 APN 代理。
