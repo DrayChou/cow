@@ -44,7 +44,8 @@ type Config struct {
 
 	TunnelAllowedPort map[string]bool // allowed ports to create tunnel
 
-	SshServer []string
+	SshServer  []string
+	SshServer2 []string
 
 	// authenticate client
 	UserPasswd     string
@@ -391,6 +392,7 @@ func (p configParser) ParseSocksParent(val string) {
 }
 
 func (p configParser) ParseSshServer(val string) {
+	debug.Println("ParseSshServer")
 	arr := strings.Split(val, ":")
 	if len(arr) == 2 {
 		val += ":22"
@@ -404,6 +406,23 @@ func (p configParser) ParseSshServer(val string) {
 	// add created socks server
 	p.ParseSocksParent("127.0.0.1:" + arr[1])
 	config.SshServer = append(config.SshServer, val)
+}
+
+func (p configParser) ParseSshServer2(val string) {
+	debug.Println("ParseSshServer2")
+	arr := strings.Split(val, ":")
+	if len(arr) == 3 {
+		val += ":22"
+	} else if len(arr) == 4 {
+		if arr[3] == "" {
+			val += "22"
+		}
+	} else {
+		Fatal("SshServer2 should be in the form of: user@server:password:local_socks_port[:server_ssh_port]")
+	}
+	// add created socks server
+	p.ParseSocksParent("127.0.0.1:" + arr[2])
+	config.SshServer2 = append(config.SshServer2, val)
 }
 
 var http struct {

@@ -41,6 +41,8 @@ func runOneSSH2(server string) {
 		if err := cmd.Run(); err != nil {
 			debug.Println("plink:", err)
 		}
+
+		fmt.Println("plink", sshServer+":"+sshPort, "exited, reconnect")
 		debug.Println("plink", sshServer+":"+sshPort, "exited, reconnect")
 		time.Sleep(5 * time.Second)
 		alreadyRunPrinted = false
