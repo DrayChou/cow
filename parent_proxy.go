@@ -91,6 +91,8 @@ func printParentProxy() {
 			debug.Println("\thttp parent: ", pc.server)
 		case *socksParent:
 			debug.Println("\tsocks parent: ", pc.server)
+		case *cowParent:
+			debug.Println("\tcow parent: ", pc.server)
 		}
 	}
 }
@@ -107,8 +109,8 @@ type httpConn struct {
 	parent *httpParent
 }
 
-func (hc httpConn) String() string {
-	return "http parent proxy " + hc.parent.server
+func (s httpConn) String() string {
+	return "http parent proxy " + s.parent.server
 }
 
 func newHttpParent(server string) *httpParent {
@@ -135,10 +137,12 @@ func (hp *httpParent) initAuth(userPasswd string) {
 func (hp *httpParent) connect(url *URL) (net.Conn, error) {
 	c, err := net.Dial("tcp", hp.server)
 	if err != nil {
-		errl.Printf("can't connect to http parent proxy %s for %s: %v\n", hp.server, url.HostPort, err)
+		errl.Printf("can't connect to http parent %s for %s: %v\n",
+			hp.server, url.HostPort, err)
 		return nil, err
 	}
-	debug.Println("connected to:", url.HostPort, "via http parent proxy:", hp.server)
+	debug.Printf("connected to: %s via http parent: %s\n",
+		url.HostPort, hp.server)
 	return httpConn{c, hp}, nil
 }
 
@@ -175,29 +179,65 @@ func (sp *shadowsocksParent) genConfig() string {
 	}
 }
 
-func (sp *shadowsocksParent) initCipher(method, passwd string) error {
-	if method == "table" {
-		method = ""
-	}
+func (sp *shadowsocksParent) initCipher(method, passwd string) {
 	sp.method = method
 	sp.passwd = passwd
 	cipher, err := ss.NewCipher(method, passwd)
 	if err != nil {
-		return err
+		Fatal("create shadowsocks cipher:", err)
 	}
 	sp.cipher = cipher
-	return nil
 }
 
 func (sp *shadowsocksParent) connect(url *URL) (net.Conn, error) {
 	c, err := ss.Dial(url.HostPort, sp.server, sp.cipher.Copy())
 	if err != nil {
-		errl.Printf("create shadowsocks connection to %s through server %s failed %v\n",
-			url.HostPort, sp.server, err)
+		errl.Printf("can't connect to shadowsocks parent %s for %s: %v\n",
+			sp.server, url.HostPort, err)
 		return nil, err
 	}
 	debug.Println("connected to:", url.HostPort, "via shadowsocks:", sp.server)
 	return shadowsocksConn{c, sp}, nil
+}
+
+// cow parent proxy
+type cowParent struct {
+	server string
+	cipher *ss.Cipher
+}
+
+type cowConn struct {
+	net.Conn
+	parent *cowParent
+}
+
+func (s cowConn) String() string {
+	return "cow proxy " + s.parent.server
+}
+
+func newCowParent(srv, method, passwd string) *cowParent {
+	cipher, err := ss.NewCipher(method, passwd)
+	if err != nil {
+		Fatal("create cow cipher:", err)
+	}
+	return &cowParent{srv, cipher}
+}
+
+func (cp *cowParent) genConfig() string {
+	return "" // no upgrading need
+}
+
+func (cp *cowParent) connect(url *URL) (net.Conn, error) {
+	c, err := net.Dial("tcp", cp.server)
+	if err != nil {
+		errl.Printf("can't connect to cow parent %s for %s: %v\n",
+			cp.server, url.HostPort, err)
+		return nil, err
+	}
+	debug.Printf("connected to: %s via cow parent: %s\n",
+		url.HostPort, cp.server)
+	ssconn := ss.NewConn(c, cp.cipher.Copy())
+	return cowConn{ssconn, cp}, nil
 }
 
 // For socks documentation, refer to rfc 1928 http://www.ietf.org/rfc/rfc1928.txt
@@ -247,7 +287,7 @@ func (sp *socksParent) genConfig() string {
 func (sp *socksParent) connect(url *URL) (net.Conn, error) {
 	c, err := net.Dial("tcp", sp.server)
 	if err != nil {
-		errl.Printf("can't connect to socks server %s for %s: %v\n",
+		errl.Printf("can't connect to socks parent %s for %s: %v\n",
 			sp.server, url.HostPort, err)
 		return nil, err
 	}
@@ -301,12 +341,6 @@ func (sp *socksParent) connect(url *URL) (net.Conn, error) {
 	copy(reqBuf[5:], host)
 	binary.BigEndian.PutUint16(reqBuf[5+hostLen:5+hostLen+2], uint16(port))
 
-	/*
-		if debug {
-			debug.Println("Send socks connect request", (url.HostPort))
-		}
-	*/
-
 	if n, err = c.Write(reqBuf); err != nil || n != bufLen {
 		errl.Printf("send socks request err %v n %d\n", err, n)
 		hasErr = true
@@ -322,7 +356,7 @@ func (sp *socksParent) connect(url *URL) (net.Conn, error) {
 			errl.Printf("read socks reply err %v n %d\n", err, n)
 		}
 		hasErr = true
-		return nil, errors.New("Connection failed (by socks server). No such host?")
+		return nil, errors.New("connection failed (by socks server " + sp.server + "). No such host?")
 	}
 	// debug.Printf("Socks reply length %d\n", n)
 

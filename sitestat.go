@@ -22,8 +22,8 @@ func init() {
 // judging whether a site is blocked or not is more reliable.
 
 const (
-	directDelta  = 15
-	blockedDelta = 10
+	directDelta  = 5
+	blockedDelta = 5
 	maxCnt       = 100 // no protect to update visit cnt, smaller value is unlikely to overflow
 	userCnt      = -1  // this represents user specified host or domain
 )
@@ -92,7 +92,7 @@ func (vc *VisitCnt) AsTempBlocked() bool {
 }
 
 func (vc *VisitCnt) AsDirect() bool {
-	return (vc.Direct == userCnt) || (vc.Direct-vc.Blocked >= directDelta && vc.Blocked == 0)
+	return (vc.Blocked == 0) || (vc.Direct-vc.Blocked >= directDelta) || vc.AlwaysDirect()
 }
 
 func (vc *VisitCnt) AsBlocked() bool {
@@ -232,6 +232,9 @@ func (ss *SiteStat) TempBlocked(url *URL) {
 var alwaysDirectVisitCnt = newVisitCnt(userCnt, 0)
 
 func (ss *SiteStat) GetVisitCnt(url *URL) (vcnt *VisitCnt) {
+	if !hasParentProxy() { // no way to retry, so always visit directly
+		return alwaysDirectVisitCnt
+	}
 	if url.Domain == "" { // simple host or private ip
 		return alwaysDirectVisitCnt
 	}
@@ -285,14 +288,27 @@ func (ss *SiteStat) store(file string) (err error) {
 		panic("internal error: error marshalling site")
 	}
 
-	f, err := os.Create(file)
+	// Store stat into temp file first and then rename.
+	// This avoids problem if SIGINT causes program to exit but stat writing
+	// is half done.
+
+	f, err := ioutil.TempFile("", "stat")
 	if err != nil {
-		errl.Println("Can't create stat file:", err)
+		errl.Println("create tmp file to store stat", err)
 		return
 	}
-	defer f.Close()
 	if _, err = f.Write(b); err != nil {
 		errl.Println("Error writing stat file:", err)
+		f.Close()
+		return
+	}
+	f.Close()
+
+	// Windows don't allow rename to existing file.
+	os.Remove(file + ".bak")
+	os.Rename(file, file+".bak") // original stat may not exist
+	if err = os.Rename(f.Name(), file); err != nil {
+		errl.Println("can't rename newly created stat file", err)
 		return
 	}
 	return
@@ -422,8 +438,12 @@ func initSiteStat() {
 	}()
 }
 
+var storeLock sync.Mutex
+
 func storeSiteStat() {
+	storeLock.Lock()
 	siteStat.store(dsFile.stat)
+	storeLock.Unlock()
 }
 
 func loadSiteList(fpath string) (lst []string, err error) {

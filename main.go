@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"runtime"
 	// "runtime/pprof"
+	"sync"
 	"syscall"
 )
 
@@ -72,18 +73,16 @@ func main() {
 
 	go sigHandler()
 	go runSSH()
-	go runSSH2()
 	if config.EstimateTimeout {
 		go runEstimateTimeout()
 	} else {
 		info.Println("timeout estimation disabled")
 	}
 
-	done := make(chan byte, 1)
-	for i, addr := range config.ListenAddr {
-		go NewProxy(addr, config.AddrInPAC[i]).Serve(done)
+	var wg sync.WaitGroup
+	wg.Add(len(listenProxy))
+	for _, proxy := range listenProxy {
+		go proxy.Serve(&wg)
 	}
-	for _, _ = range config.ListenAddr {
-		<-done
-	}
+	wg.Wait()
 }

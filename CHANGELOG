@@ -1,10 +1,20 @@
+0.9 (2013-12-02)
+    * New feature: two COW servers can be connected using encrypted
+      connection, thus we have an encrypted HTTP proxy chain that can
+      be used to bypass the firewall
+    * Allow client to use HTTP basic authentication
+    * Simplify configuration syntax
+    * Better reuse for HTTP parent connections
+    * Reduce direct/blocked delta
+    * Generate new PAC every minute
+
 0.8 (2013-08-10)
     * Share server connections between different clients
     * Add tunnelAllowedPort option to limit ports CONNECT method can connect to
     * Avoid timeout too soon for frequently visited direct sites
     * Fix reporting malformed requests in two cases when request has body:
       - Authenticate requests
-      - Error occured before request is sent
+      - Error occurred before request is sent
     * Support multi-lined headers
     * Change client connection timeout to 15s
     * Change as direct delta to 15
