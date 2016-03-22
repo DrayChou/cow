@@ -4,7 +4,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/cyfdecyf/bufio"
 	"net"
 	"os"
 	"path"
@@ -12,11 +11,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cyfdecyf/bufio"
 )
 
 const (
-	version           = "0.9"
-	defaultListenAddr = "127.0.0.1:7777"
+	version               = "0.9.6"
+	defaultListenAddr     = "127.0.0.1:7777"
+	defaultEstimateTarget = "example.com"
 )
 
 type LoadBalanceMode byte
@@ -24,6 +26,7 @@ type LoadBalanceMode byte
 const (
 	loadBalanceBackup LoadBalanceMode = iota
 	loadBalanceHash
+	loadBalanceLatency
 )
 
 // allow the same tunnel ports as polipo
@@ -37,10 +40,10 @@ var defaultTunnelAllowedPort = []string{
 }
 
 type Config struct {
-	RcFile      string // config file
-	LogFile     string
-	AlwaysProxy bool
-	LoadBalance LoadBalanceMode
+	RcFile      string          // config file
+	LogFile     string          // path for log file
+	AlwaysProxy bool            // whether we should alwyas use parent proxy
+	LoadBalance LoadBalanceMode // select load balance mode
 
 	TunnelAllowedPort map[string]bool // allowed ports to create tunnel
 
@@ -60,9 +63,17 @@ type Config struct {
 	Core         int
 	DetectSSLErr bool
 
+	HttpErrorCode int
+
+	dir         string // directory containing config file
+	StatFile    string // Path for stat file
+	BlockedFile string // blocked sites specified by user
+	DirectFile  string // direct sites specified by user
+
 	// not configurable in config file
 	PrintVer        bool
-	EstimateTimeout bool // if run estimateTimeout()
+	EstimateTimeout bool   // Whether to run estimateTimeout().
+	EstimateTarget  string // Timeout estimate target site.
 
 	// not config option
 	saveReqLine bool // for http and cow parent, should save request line from client
@@ -71,24 +82,15 @@ type Config struct {
 var config Config
 var configNeedUpgrade bool // whether should upgrade config file
 
-var dsFile struct {
-	dir           string // directory containing config file and blocked site list
-	alwaysBlocked string // blocked sites specified by user
-	alwaysDirect  string // direct sites specified by user
-	stat          string // site visit statistics
-}
-
 func printVersion() {
 	fmt.Println("cow version", version)
 }
 
-func init() {
-	initConfigDir()
-	// fmt.Println("home dir:", homeDir)
-
-	dsFile.alwaysBlocked = path.Join(dsFile.dir, alwaysBlockedFname)
-	dsFile.alwaysDirect = path.Join(dsFile.dir, alwaysDirectFname)
-	dsFile.stat = path.Join(dsFile.dir, statFname)
+func initConfig(rcFile string) {
+	config.dir = path.Dir(rcFile)
+	config.BlockedFile = path.Join(config.dir, blockedFname)
+	config.DirectFile = path.Join(config.dir, directFname)
+	config.StatFile = path.Join(config.dir, statFname)
 
 	config.DetectSSLErr = false
 	config.AlwaysProxy = false
@@ -101,6 +103,8 @@ func init() {
 	for _, port := range defaultTunnelAllowedPort {
 		config.TunnelAllowedPort[port] = true
 	}
+
+	config.EstimateTarget = defaultEstimateTarget
 }
 
 // Whether command line options specifies listen addr
@@ -110,7 +114,7 @@ func parseCmdLineConfig() *Config {
 	var c Config
 	var listenAddr string
 
-	flag.StringVar(&c.RcFile, "rc", path.Join(dsFile.dir, rcFname), "configuration file")
+	flag.StringVar(&c.RcFile, "rc", "", "config file, defaults to $HOME/.cow/rc on Unix, ./rc.txt on Windows")
 	// Specifying listen default value to StringVar would override config file options
 	flag.StringVar(&listenAddr, "listen", "", "listen address, disables listen in config")
 	flag.IntVar(&c.Core, "core", 2, "number of cores to use")
@@ -119,6 +123,17 @@ func parseCmdLineConfig() *Config {
 	flag.BoolVar(&c.EstimateTimeout, "estimate", true, "enable/disable estimate timeout")
 
 	flag.Parse()
+
+	if c.RcFile == "" {
+		c.RcFile = getDefaultRcFile()
+	} else {
+		c.RcFile = expandTilde(c.RcFile)
+	}
+	if err := isFileExists(c.RcFile); err != nil {
+		Fatal("fail to get config file:", err)
+	}
+	initConfig(c.RcFile)
+
 	if listenAddr != "" {
 		configParser{}.ParseListen(listenAddr)
 		cmdHasListenAddr = true // must come after parse
@@ -174,7 +189,7 @@ func (p proxyParser) ProxySocks5(val string) {
 	if err := checkServerAddr(val); err != nil {
 		Fatal("parent socks server", err)
 	}
-	addParentProxy(newSocksParent(val))
+	parentProxy.add(newSocksParent(val))
 }
 
 func (pp proxyParser) ProxyHttp(val string) {
@@ -198,27 +213,26 @@ func (pp proxyParser) ProxyHttp(val string) {
 
 	parent := newHttpParent(server)
 	parent.initAuth(userPasswd)
-	addParentProxy(parent)
+	parentProxy.add(parent)
 }
 
 // Parse method:passwd@server:port
 func parseMethodPasswdServer(val string) (method, passwd, server string, err error) {
-	arr := strings.Split(val, "@")
-	if len(arr) < 2 {
+	// Use the right-most @ symbol to seperate method:passwd and server:port.
+	idx := strings.LastIndex(val, "@")
+	if idx == -1 {
 		err = errors.New("requires both encrypt method and password")
-		return
-	} else if len(arr) > 2 {
-		err = errors.New("contains too many @")
 		return
 	}
 
-	methodPasswd := arr[0]
-	server = arr[1]
+	methodPasswd := val[:idx]
+	server = val[idx+1:]
 	if err = checkServerAddr(server); err != nil {
 		return
 	}
 
-	arr = strings.Split(methodPasswd, ":")
+	// Password can have : inside, but I don't recommend this.
+	arr := strings.SplitN(methodPasswd, ":", 2)
 	if len(arr) != 2 {
 		err = errors.New("method and password should be separated by :")
 		return
@@ -236,30 +250,22 @@ func (pp proxyParser) ProxySs(val string) {
 	}
 	parent := newShadowsocksParent(server)
 	parent.initCipher(method, passwd)
-	addParentProxy(parent)
+	parentProxy.add(parent)
 }
 
 func (pp proxyParser) ProxyCow(val string) {
-	arr := strings.Split(val, "@")
-	if len(arr) < 2 {
-		Fatal("cow parent needs encrypt method and password")
-	} else if len(arr) > 2 {
-		Fatal("cow parent contains too many @")
+	method, passwd, server, err := parseMethodPasswdServer(val)
+	if err != nil {
+		Fatal("cow parent", err)
 	}
 
-	methodPasswd := arr[0]
-	server := arr[1]
 	if err := checkServerAddr(server); err != nil {
 		Fatal("parent cow server", err)
 	}
 
-	arr = strings.Split(methodPasswd, ":")
-	if len(arr) != 2 {
-		Fatal("cow parent method password should be separated by :")
-	}
 	config.saveReqLine = true
-	parent := newCowParent(server, arr[0], arr[1])
-	addParentProxy(parent)
+	parent := newCowParent(server, method, passwd)
+	parentProxy.add(parent)
 }
 
 // listenParser provides functions to parse different types of listen addresses
@@ -348,7 +354,7 @@ func (p configParser) ParseListen(val string) {
 }
 
 func (p configParser) ParseLogFile(val string) {
-	config.LogFile = val
+	config.LogFile = expandTilde(val)
 }
 
 func (p configParser) ParseAddrInPAC(val string) {
@@ -437,7 +443,7 @@ func (p configParser) ParseHttpParent(val string) {
 	}
 	config.saveReqLine = true
 	http.parent = newHttpParent(val)
-	addParentProxy(http.parent)
+	parentProxy.add(http.parent)
 	http.serverCnt++
 	configNeedUpgrade = true
 }
@@ -463,8 +469,28 @@ func (p configParser) ParseLoadBalance(val string) {
 		config.LoadBalance = loadBalanceBackup
 	case "hash":
 		config.LoadBalance = loadBalanceHash
+	case "latency":
+		config.LoadBalance = loadBalanceLatency
 	default:
 		Fatalf("invalid loadBalance mode: %s\n", val)
+	}
+}
+
+func (p configParser) ParseStatFile(val string) {
+	config.StatFile = expandTilde(val)
+}
+
+func (p configParser) ParseBlockedFile(val string) {
+	config.BlockedFile = expandTilde(val)
+	if err := isFileExists(config.BlockedFile); err != nil {
+		Fatal("blocked file:", err)
+	}
+}
+
+func (p configParser) ParseDirectFile(val string) {
+	config.DirectFile = expandTilde(val)
+	if err := isFileExists(config.DirectFile); err != nil {
+		Fatal("direct file:", err)
 	}
 }
 
@@ -499,7 +525,7 @@ func (p configParser) ParseShadowSocks(val string) {
 		Fatal("shadowsocks server", err)
 	}
 	shadow.parent = newShadowsocksParent(val)
-	addParentProxy(shadow.parent)
+	parentProxy.add(shadow.parent)
 	shadow.serverCnt++
 	configNeedUpgrade = true
 }
@@ -545,12 +571,9 @@ func (p configParser) ParseUserPasswd(val string) {
 }
 
 func (p configParser) ParseUserPasswdFile(val string) {
-	exist, err := isFileExists(val)
+	err := isFileExists(val)
 	if err != nil {
-		Fatal("userPasswdFile error:", err)
-	}
-	if !exist {
-		Fatal("userPasswdFile", val, "does not exist")
+		Fatal("userPasswdFile:", err)
 	}
 	config.UserPasswdFile = val
 }
@@ -567,6 +590,10 @@ func (p configParser) ParseCore(val string) {
 	config.Core = parseInt(val, "core")
 }
 
+func (p configParser) ParseHttpErrorCode(val string) {
+	config.HttpErrorCode = parseInt(val, "httpErrorCode")
+}
+
 func (p configParser) ParseReadTimeout(val string) {
 	config.ReadTimeout = parseDuration(val, "readTimeout")
 }
@@ -579,18 +606,17 @@ func (p configParser) ParseDetectSSLErr(val string) {
 	config.DetectSSLErr = parseBool(val, "detectSSLErr")
 }
 
+func (p configParser) ParseEstimateTarget(val string) {
+	config.EstimateTarget = val
+}
+
 // overrideConfig should contain options from command line to override options
 // in config file.
 func parseConfig(rc string, override *Config) {
 	// fmt.Println("rcFile:", path)
 	f, err := os.Open(expandTilde(rc))
 	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Printf("Config file %s not found, using default options\n", rc)
-		} else {
-			fmt.Println("Error opening config file:", err)
-		}
-		return
+		Fatal("Error opening config file:", err)
 	}
 
 	IgnoreUTF8BOM(f)
@@ -611,7 +637,7 @@ func parseConfig(rc string, override *Config) {
 			continue
 		}
 
-		v := strings.Split(line, "=")
+		v := strings.SplitN(line, "=", 2)
 		if len(v) != 2 {
 			Fatal("config syntax error on line", n)
 		}
@@ -672,7 +698,11 @@ func upgradeConfig(rc string, lines []string) {
 			// comment out original
 			w.WriteString("#" + line + newLine)
 		case "httpParent", "shadowSocks", "socksParent":
-			parent := parentProxy[proxyId]
+			backPool, ok := parentProxy.(*backupParentPool)
+			if !ok {
+				panic("initial parent pool should be backup pool")
+			}
+			parent := backPool.parent[proxyId]
 			proxyId++
 			w.WriteString(parent.genConfig() + newLine)
 			// comment out original
@@ -735,25 +765,4 @@ func checkConfig() {
 	if listenProxy == nil {
 		listenProxy = []Proxy{newHttpProxy(defaultListenAddr, "")}
 	}
-	if len(parentProxy) <= 1 {
-		config.LoadBalance = loadBalanceBackup
-	}
-}
-
-func mkConfigDir() (err error) {
-	if dsFile.dir == "" {
-		return os.ErrNotExist
-	}
-	exists, err := isDirExists(dsFile.dir)
-	if err != nil {
-		errl.Printf("Error checking config directory: %v\n", err)
-		return
-	}
-	if exists {
-		return
-	}
-	if err = os.Mkdir(dsFile.dir, 0755); err != nil {
-		errl.Printf("Error create config directory %s: %v\n", dsFile.dir, err)
-	}
-	return
 }

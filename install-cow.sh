@@ -1,6 +1,6 @@
 #!/bin/bash
 
-version=0.9
+version=0.9.6
 
 arch=`uname -m`
 case $arch in
@@ -11,7 +11,14 @@ case $arch in
         arch="32"
         ;;
     "armv5tel" | "armv6l" | "armv7l")
-        arch="-$arch"
+        features=`cat /proc/cpuinfo | grep Features`
+        if [[ ! "$features" =~ "vfp" ]]; then
+            #arm without vfp must use GOARM=5 binary
+            #see https://github.com/golang/go/wiki/GoArm
+            arch="-armv5tel"
+        else
+            arch="-$arch"
+        fi
         ;;
     *)
         echo "$arch currently has no precompiled binary"
@@ -38,8 +45,14 @@ exit_on_fail() {
     fi
 }
 
-# Get installation directory from user
 while true; do
+    # Get install directory from environment variable.
+    if [[ -n $COW_INSTALLDIR && -d $COW_INSTALLDIR ]]; then
+        install_dir=$COW_INSTALLDIR
+        break
+    fi
+
+    # Get installation directory from user
     echo -n "Install cow binary to which directory (absolute path, defaults to current dir): "
     read install_dir </dev/tty
     if [ -z $install_dir ]; then
@@ -77,7 +90,7 @@ fi
 bin=cow-$os$arch-$version
 tmpdir=`mktemp -d /tmp/cow.XXXXXX`
 tmpbin=$tmpdir/cow
-binary_url="http://dl.chenyufei.info/cow/$bin.gz"
+binary_url="http://dl.chenyufei.info/cow/$version/$bin.gz"
 echo "Downloading cow binary $binary_url to $tmpbin.gz"
 curl -L "$binary_url" -o $tmpbin.gz || \
     exit_on_fail "Downloading cow binary failed"
@@ -86,7 +99,7 @@ chmod +x $tmpbin ||
     exit_on_fail "Can't chmod for $tmpbin"
 
 # Download sample config file if no configuration directory present
-doc_base="https://github.com/cyfdecyf/cow/raw/master/doc"
+doc_base="https://raw.github.com/cyfdecyf/cow/$version/doc"
 config_dir="$HOME/.cow"
 is_update=true
 if [ ! -e $config_dir ]; then

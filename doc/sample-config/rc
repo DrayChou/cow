@@ -10,6 +10,8 @@
 #   listen = http://127.0.0.1:7777
 #
 #   上面的例子中，cow 生成的 PAC url 为 http://127.0.0.1:7777/pac
+#   配置浏览器或系统 HTTP 和 HTTPS 代理时请填入该地址
+#   若配置代理时有对所有协议使用该代理的选项，且你不清楚此选项的含义，请勾选
 #
 # cow (需两个 cow 服务器配合使用):
 #   listen = cow://encrypt_method:password@1.2.3.4:5678
@@ -33,8 +35,9 @@ listen = http://127.0.0.1:7777
 
 # 指定多个二级代理时使用的负载均衡策略，可选策略如下
 #
-#   backup: 默认策略，优先使用第一个指定的二级代理，其他仅作备份使用
-#   hash:   根据请求的 host name，优先使用 hash 到的某一个二级代理
+#   backup:  默认策略，优先使用第一个指定的二级代理，其他仅作备份使用
+#   hash:    根据请求的 host name，优先使用 hash 到的某一个二级代理
+#   latency: 优先选择连接延迟最低的二级代理
 #
 # 一个二级代理连接失败后会依次尝试其他二级代理
 # 失败的二级代理会以一定的概率再次尝试使用，因此恢复后会重新启用
@@ -66,7 +69,8 @@ listen = http://127.0.0.1:7777
 #
 #   authinfo 中指定加密方法和密码，所有支持的加密方法如下：
 #     aes-128-cfb, aes-192-cfb, aes-256-cfb,
-#     bf-cfb, cast5-cfb, des-cfb, table, rc4
+#     bf-cfb, cast5-cfb, des-cfb, rc4-md5,
+#     chacha20, salsa20, rc4, table
 #   推荐使用 aes-128-cfb
 #
 # cow:
@@ -117,8 +121,14 @@ listen = http://127.0.0.1:7777
 # 高级选项
 #############################
 
+# 将指定的 HTTP error code 认为是被干扰，使用二级代理重试，默认为空
+#httpErrorCode =
+
 # 最多允许使用多少个 CPU 核
 #core = 2
+
+# 检测超时时间使用的网站，最好使用能快速访问的站点
+#estimateTarget = example.com
 
 # 允许建立隧道连接的端口，多个端口用逗号分隔，可重复多次
 # 默认总是允许下列服务的端口: ssh, http, https, rsync, imap, pop, jabber, cvs, git, svn
@@ -138,3 +148,9 @@ listen = http://127.0.0.1:7777
 # （Chrome 遇到 SSL 错误会直接关闭连接，而不是让用户选择是否继续）
 # 可能将可直连网站误判为被墙网站，当 GFW 进行 SSL 中间人攻击时可以考虑使用
 #detectSSLErr = false
+
+# 修改 stat/blocked/direct 文件路径，如不指定，默认在配置文件所在目录下
+# 执行 cow 的用户需要有对 stat 文件所在目录的写权限才能更新 stat 文件
+#statFile = <dir to rc file>/stat
+#blockedFile = <dir to rc file>/blocked
+#directFile = <dir to rc file>/direct
